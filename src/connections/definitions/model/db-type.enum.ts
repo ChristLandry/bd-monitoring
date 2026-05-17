@@ -1,0 +1,8 @@
+export enum DbType {
+  ORACLE = 'ORACLE',
+  POSTGRESQL = 'POSTGRESQL',
+  MYSQL = 'MYSQL',
+  MARIADB = 'MARIADB',
+  MSSQL = 'MSSQL',
+  MONGODB = 'MONGODB',
+}
