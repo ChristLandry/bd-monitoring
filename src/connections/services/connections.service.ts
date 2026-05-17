@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { CreateConnectionDto } from '../definitions/dto/create-connection.dto';
 import { UpdateConnectionDto } from '../definitions/dto/update-connection.dto';
@@ -16,23 +16,28 @@ export class ConnectionsService {
     private readonly repository: ConnectionRepository,
     private readonly encryption: EncryptionService,
     private readonly queryExecution: QueryExecutionService,
-  ) {}
+  ) { }
 
   async create(dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
-    const entity = this.repository.create({
-      label: dto.label,
-      type: dto.type,
-      host: dto.host,
-      port: dto.port,
-      database: dto.database,
-      username: dto.username,
-      passwordEncrypted: this.encryption.encrypt(dto.password),
-      environment: dto.environment,
-      sslEnabled: dto.sslEnabled ?? false,
-      options: dto.options ?? null,
-    });
-    const saved = await this.repository.save(entity);
-    return ConnectionResponseDto.fromEntity(saved);
+    try {
+      const entity = this.repository.create({
+        label: dto.label,
+        type: dto.type,
+        host: dto.host,
+        port: dto.port,
+        database: dto.database,
+        username: dto.username,
+        passwordEncrypted: this.encryption.encrypt(dto.password),
+        environment: dto.environment,
+        sslEnabled: dto.sslEnabled ?? false,
+        options: dto.options ?? null,
+      });
+      const saved = await this.repository.save(entity);
+      return ConnectionResponseDto.fromEntity(saved);
+    } catch (error) {
+      console.error('>>>>>>>>>>>>>>><<',error);
+      throw new BadRequestException('Erreur lors de la création de la connexion', error);
+    }
   }
 
   async findAll(): Promise<ConnectionResponseDto[]> {

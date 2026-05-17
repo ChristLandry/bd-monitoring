@@ -7,9 +7,12 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
+import { DEFAULT_INTERVAL_SECONDS } from '../class/cron-expression.util';
 import { ThresholdOperator } from '../model/threshold-operator.enum';
 import { MonitoringStatus } from '../model/monitoring-status.enum';
 import { NotificationChannel } from '../model/notification-channel.enum';
@@ -40,9 +43,27 @@ export class CreateMonitoringDto {
   @IsEnum(ThresholdOperator)
   operateurSeuil: ThresholdOperator;
 
-  @ApiProperty({ example: '*/5 * * * *' })
+  @ApiPropertyOptional({
+    example: '*/30 * * * * *',
+    description:
+      'Cron 6 champs (sec min h j m jsem). Si absent, intervalSeconds est utilisé.',
+  })
+  @ValidateIf((o: CreateMonitoringDto) => o.intervalSeconds === undefined)
   @IsString()
-  frequenceCron: string;
+  @IsNotEmpty()
+  frequenceCron?: string;
+
+  @ApiPropertyOptional({
+    example: DEFAULT_INTERVAL_SECONDS,
+    default: DEFAULT_INTERVAL_SECONDS,
+    description:
+      'Intervalle en secondes (défaut 30). Génère */N * * * * * si frequenceCron est absent.',
+  })
+  @ValidateIf((o: CreateMonitoringDto) => !o.frequenceCron?.trim())
+  @IsInt()
+  @Min(1)
+  @Max(86400)
+  intervalSeconds?: number;
 
   @ApiProperty({ enum: NotificationChannel })
   @IsEnum(NotificationChannel)
@@ -77,6 +98,16 @@ export class CreateMonitoringDto {
   @IsOptional()
   @IsUUID()
   correctionQueryId?: string;
+
+  @ApiPropertyOptional({
+    enum: MonitoringStatus,
+    default: MonitoringStatus.INACTIF,
+    description:
+      'INACTIF : cron enregistré mais suspendu. ACTIF : cron démarré à la création.',
+  })
+  @IsOptional()
+  @IsEnum(MonitoringStatus)
+  statut?: MonitoringStatus;
 }
 
 export class UpdateMonitoringDto extends CreateMonitoringDto {}

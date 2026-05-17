@@ -16,6 +16,10 @@ import { MonitoringSchedulerService } from './monitoring-scheduler.service';
 import { MonitoringExecutionService } from './monitoring-execution.service';
 import { QueriesService } from '../../queries/services/queries.service';
 import { ContactGroupsService } from '../../contact-groups/services/contact-groups.service';
+import {
+  normalizeCronExpression,
+  resolveMonitoringCronExpression,
+} from '../definitions/class/cron-expression.util';
 
 @Injectable()
 export class MonitoringsService {
@@ -28,7 +32,9 @@ export class MonitoringsService {
   ) {}
 
   async create(dto: CreateMonitoringDto): Promise<MonitoringResponseDto> {
-    this.validateCron(dto.frequenceCron);
+    const frequenceCron = resolveMonitoringCronExpression(dto);
+    this.validateCron(frequenceCron);
+
     await this.queriesService.getEntityOrFail(dto.queryId);
     await this.contactGroupsService.getOrFail(dto.contactGroupId);
     if (dto.escaladeGroupId) {
@@ -38,16 +44,26 @@ export class MonitoringsService {
       await this.queriesService.getEntityOrFail(dto.correctionQueryId);
     }
 
+    const statut = dto.statut ?? MonitoringStatus.INACTIF;
+
     const entity = this.repository.create({
-      ...dto,
+      label: dto.label,
       description: dto.description ?? null,
-      statut: MonitoringStatus.INACTIF,
+      queryId: dto.queryId,
+      seuilNonAcceptation: dto.seuilNonAcceptation,
+      operateurSeuil: dto.operateurSeuil,
+      frequenceCron,
+      canalNotification: dto.canalNotification,
+      priorite: dto.priorite,
+      contactGroupId: dto.contactGroupId,
+      statut,
       antiFloodMinutes: dto.antiFloodMinutes ?? 15,
       escaladeMinutes: dto.escaladeMinutes ?? 30,
       escaladeGroupId: dto.escaladeGroupId ?? null,
       correctionQueryId: dto.correctionQueryId ?? null,
     });
     const saved = await this.repository.save(entity);
+    this.scheduler.register(saved);
     return MonitoringResponseDto.fromEntity(saved);
   }
 
@@ -72,9 +88,19 @@ export class MonitoringsService {
     dto: UpdateMonitoringDto,
   ): Promise<MonitoringResponseDto> {
     const entity = await this.getOrFail(id);
-    if (dto.frequenceCron) {
-      this.validateCron(dto.frequenceCron);
+
+    const cronChanged =
+      dto.frequenceCron !== undefined || dto.intervalSeconds !== undefined;
+
+    if (cronChanged) {
+      const frequenceCron = resolveMonitoringCronExpression({
+        frequenceCron: dto.frequenceCron ?? entity.frequenceCron,
+        intervalSeconds: dto.intervalSeconds,
+      });
+      this.validateCron(frequenceCron);
+      entity.frequenceCron = frequenceCron;
     }
+
     Object.assign(entity, {
       ...(dto.label !== undefined && { label: dto.label }),
       ...(dto.description !== undefined && { description: dto.description }),
@@ -84,9 +110,6 @@ export class MonitoringsService {
       }),
       ...(dto.operateurSeuil !== undefined && {
         operateurSeuil: dto.operateurSeuil,
-      }),
-      ...(dto.frequenceCron !== undefined && {
-        frequenceCron: dto.frequenceCron,
       }),
       ...(dto.canalNotification !== undefined && {
         canalNotification: dto.canalNotification,
@@ -108,8 +131,9 @@ export class MonitoringsService {
         correctionQueryId: dto.correctionQueryId,
       }),
     });
+
     const saved = await this.repository.save(entity);
-    if (dto.frequenceCron && saved.statut === MonitoringStatus.ACTIF) {
+    if (cronChanged) {
       this.scheduler.reschedule(saved);
     }
     return MonitoringResponseDto.fromEntity(saved);
@@ -125,7 +149,7 @@ export class MonitoringsService {
     const entity = await this.getOrFail(id);
     entity.statut = MonitoringStatus.ACTIF;
     const saved = await this.repository.save(entity);
-    this.scheduler.schedule(saved);
+    this.scheduler.register(saved);
     return MonitoringResponseDto.fromEntity(saved);
   }
 
@@ -157,9 +181,12 @@ export class MonitoringsService {
 
   private validateCron(expression: string): void {
     try {
-      CronExpressionParser.parse(expression);
-    } catch {
-      throw new BadRequestException(`Expression cron invalide: ${expression}`);
+      const normalized = normalizeCronExpression(expression);
+      CronExpressionParser.parse(normalized);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Expression cron invalide';
+      throw new BadRequestException(message);
     }
   }
 }

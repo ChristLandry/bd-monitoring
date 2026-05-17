@@ -13,6 +13,7 @@ import { ThresholdOperator } from './threshold-operator.enum';
 import { MonitoringStatus } from './monitoring-status.enum';
 import { NotificationChannel } from './notification-channel.enum';
 import { Priority } from './priority.enum';
+import { DEFAULT_CRON_EXPRESSION } from '../class/cron-expression.util';
 
 @Entity('monitorings')
 export class MonitoringEntity {
@@ -38,7 +39,11 @@ export class MonitoringEntity {
   @Column({ name: 'operateur_seuil', type: 'enum', enum: ThresholdOperator })
   operateurSeuil: ThresholdOperator;
 
-  @Column({ name: 'frequence_cron', length: 100 })
+  @Column({
+    name: 'frequence_cron',
+    length: 100,
+    default: DEFAULT_CRON_EXPRESSION,
+  })
   frequenceCron: string;
 
   @Column({ type: 'enum', enum: MonitoringStatus, default: MonitoringStatus.INACTIF })
